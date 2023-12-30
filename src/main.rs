@@ -1,13 +1,23 @@
-use std::error::Error;
-use crossterm::{terminal::{self, EnterAlternateScreen, LeaveAlternateScreen}, cursor::{Hide, Show}, ExecutableCommand, event::{self, Event, KeyCode}};
-use invaders::{frame::{self, new_frame, Drawable}, render, player::Player};
+use crossterm::{
+    cursor::{Hide, Show},
+    event::{self, Event, KeyCode},
+    terminal::{self, EnterAlternateScreen, LeaveAlternateScreen},
+    ExecutableCommand,
+};
+use invaders::{
+    frame::{self, new_frame, Drawable},
+    invaders::Invaders,
+    player::Player,
+    render,
+};
 use rusty_audio::Audio;
+use std::error::Error;
 use std::io;
-use std::time::{Duration, Instant};
-use std::thread;
 use std::sync::mpsc;
+use std::thread;
+use std::time::{Duration, Instant};
 
-fn main() -> Result <(), Box<dyn Error>>{
+fn main() -> Result<(), Box<dyn Error>> {
     let mut audio = Audio::new();
     audio.add("explode", "explode.wav");
     audio.add("lose", "lose.wav");
@@ -42,6 +52,7 @@ fn main() -> Result <(), Box<dyn Error>>{
     //Game Loop
     let mut player = Player::new();
     let mut instant = Instant::now();
+    let mut invaders = Invaders::new();
     'gameloop: loop {
         // Per frame init
         let delta = instant.elapsed();
@@ -67,12 +78,18 @@ fn main() -> Result <(), Box<dyn Error>>{
                 }
             }
         }
-        
+
         //Updates
         player.update(delta);
+        if invaders.update(delta) {
+            audio.play("move");
+        }
 
         // Draw & render
-        player.draw(&mut curr_frame);
+        let drawables: Vec<&dyn Drawable> = vec![&player, &invaders];
+        for drawable in drawables {
+            drawable.draw(&mut curr_frame);
+        }
         let _ = render_tx.send(curr_frame);
         thread::sleep(Duration::from_millis(1));
     }

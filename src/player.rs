@@ -5,14 +5,16 @@ pub struct Player {
     x: usize,
     y: usize,
     shots: Vec<Shot>,
+    game_level: usize,
 }
 
 impl Player {
-    pub fn new() -> Self {
+    pub fn new(level: usize) -> Self {
         Self {
-            x: NUM_COLS / 2,
-            y: NUM_ROWS - 1,
+            x: (NUM_COLS * level) / 2,
+            y: (NUM_ROWS * level) - 1,
             shots: Vec::new(),
+            game_level: level,
         }
     }
 
@@ -23,7 +25,8 @@ impl Player {
     }
 
     pub fn move_right(&mut self) {
-        if self.x < NUM_COLS {
+        let num_cols = NUM_COLS * self.game_level;
+        if self.x < num_cols - 1 {
             self.x += 1;
         }
     }

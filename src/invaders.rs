@@ -12,15 +12,18 @@ pub struct Invaders {
     pub army: Vec<Invader>,
     move_timer: Timer,
     direction: i32,
+    game_level: usize,
 }
 
 impl Invaders {
-    pub fn new() -> Self {
+    pub fn new(level: usize) -> Self {
+        let num_cols = NUM_COLS * level;
+        let num_rows = NUM_ROWS * level;
         let mut army = Vec::new();
-        for x in 0..NUM_COLS {
-            for y in 0..NUM_ROWS {
+        for x in 0..num_cols {
+            for y in 0..num_rows {
                 if (x > 1)
-                    && (x < NUM_COLS - 2)
+                    && (x < num_cols - 2)
                     && (y > 0)
                     && (y < 9)
                     && (x % 2 == 0)
@@ -34,6 +37,7 @@ impl Invaders {
             army: army,
             move_timer: Timer::from_millis(2000),
             direction: 1,
+            game_level: level,
         }
     }
 
@@ -50,7 +54,7 @@ impl Invaders {
                 }
             } else {
                 let max_x = self.army.iter().map(|invader| invader.x).max().unwrap_or(0);
-                if max_x == NUM_COLS - 1 {
+                if max_x == (NUM_COLS * self.game_level) - 1 {
                     self.direction = -1;
                     downwards = true;
                 }
@@ -76,7 +80,8 @@ impl Invaders {
     }
 
     pub fn reached_bottom(&self) -> bool {
-        self.army.iter().map(|invader| invader.y).max().unwrap_or(0) >= NUM_ROWS - 1
+        self.army.iter().map(|invader| invader.y).max().unwrap_or(0)
+            >= (NUM_ROWS * self.game_level) - 1
     }
 
     pub fn kill_invader_at(&mut self, x: usize, y: usize) -> bool {

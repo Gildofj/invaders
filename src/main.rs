@@ -5,7 +5,7 @@ use crossterm::{
     ExecutableCommand,
 };
 use invaders::{
-    frame::{self, new_frame, Drawable},
+    frame::{self, new_frame, Drawable, Frame},
     invaders::Invaders,
     player::Player,
     render,
@@ -13,11 +13,22 @@ use invaders::{
 use rusty_audio::Audio;
 use std::error::Error;
 use std::io;
-use std::sync::mpsc;
+use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
+struct Level {
+    number: usize,
+}
+
+struct RenderHandleResult {
+    frame: Frame,
+    is_next_level: bool,
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
+    let level = Arc::new(Mutex::new(Level { number: 1 }));
+
     let mut audio = Audio::new();
     audio.add("explode", "explode.wav");
     audio.add("lose", "lose.wav");
@@ -36,28 +47,36 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Render loop in a separate thread
     let (render_tx, render_rx) = mpsc::channel();
     let render_handle = thread::spawn(move || {
-        let mut last_frame = frame::new_frame();
+        let mut last_frame = frame::new_frame(1);
         let mut stdout = io::stdout();
         render::render(&mut stdout, &last_frame, &last_frame, true);
         loop {
-            let curr_frame = match render_rx.recv() {
+            let result: RenderHandleResult = match render_rx.recv() {
                 Ok(x) => x,
                 Err(_) => break,
             };
-            render::render(&mut stdout, &last_frame, &curr_frame, false);
-            last_frame = curr_frame;
+            if result.is_next_level {
+                render::render(&mut stdout, &result.frame, &result.frame, true);
+            } else {
+                render::render(&mut stdout, &last_frame, &result.frame, false);
+            }
+            last_frame = result.frame;
         }
     });
 
     //Game Loop
-    let mut player = Player::new();
+    let mut player = Player::new(1);
     let mut instant = Instant::now();
-    let mut invaders = Invaders::new();
+    let mut invaders = Invaders::new(1);
     'gameloop: loop {
         // Per frame init
+        let mut curr_frame = new_frame(1);
         let delta = instant.elapsed();
         instant = Instant::now();
-        let mut curr_frame = new_frame();
+
+        if let Ok(data) = level.lock() {
+            curr_frame = new_frame(data.number)
+        };
 
         // Input
         while event::poll(Duration::default())? {
@@ -79,13 +98,16 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
         }
 
-        //Updates
-        player.update(delta);
-        if invaders.update(delta) {
-            audio.play("move");
-        }
-        if player.detect_hits(&mut invaders) {
-            audio.play("explode");
+        // Updates
+        if let Ok(data) = level.lock() {
+            curr_frame = new_frame(data.number);
+            player.update(delta);
+            if invaders.update(delta) {
+                audio.play("move");
+            }
+            if player.detect_hits(&mut invaders) {
+                audio.play("explode");
+            }
         }
 
         // Draw & render
@@ -93,14 +115,29 @@ fn main() -> Result<(), Box<dyn Error>> {
         for drawable in drawables {
             drawable.draw(&mut curr_frame);
         }
-        let _ = render_tx.send(curr_frame);
+        let _ = render_tx.send(RenderHandleResult {
+            frame: curr_frame,
+            is_next_level: false,
+        });
         thread::sleep(Duration::from_millis(1));
 
         // Win or lose?
-        if invaders.all_killed() {
-            audio.play("win");
+        if let Ok(mut data) = level.lock() {
+            if invaders.all_killed() {
+                audio.play("win");
+                data.number += 1;
+                player = Player::new(data.number);
+                instant = Instant::now();
+                invaders = Invaders::new(data.number);
+                let _ = render_tx.send(RenderHandleResult {
+                    frame: new_frame(data.number),
+                    is_next_level: true,
+                });
+            }
+        } else {
             break 'gameloop;
         }
+
         if invaders.reached_bottom() {
             audio.play("lose");
             break 'gameloop;
